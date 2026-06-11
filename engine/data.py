@@ -15,3 +15,7 @@ def get_spot_price(ticker):
             period="1d"
         )["Close"].iloc[-1]
     )
+
+get_expirations()
+
+download_option_chain()
