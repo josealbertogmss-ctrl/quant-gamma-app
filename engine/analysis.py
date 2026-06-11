@@ -5,6 +5,10 @@ from engine.data import (
     download_option_chain
 )
 
+from engine.calculations import (
+    calc_gamma_vectorized
+)
+
 def run_analysis(symbol, max_dte):
 
     ticker = load_ticker(symbol)
@@ -28,6 +32,17 @@ def run_analysis(symbol, max_dte):
         chain.puts["openInterest"].fillna(0).sum()
     )
 
+    sample_strike = chain.calls.iloc[0]["strike"]
+
+    sample_iv = chain.calls.iloc[0]["impliedVolatility"]
+
+    gamma = calc_gamma_vectorized(
+        spot,
+        sample_strike,
+        sample_iv,
+        30/365
+    )
+    
     return {
         "symbol": symbol,
         "spot": float(spot),
@@ -38,4 +53,5 @@ def run_analysis(symbol, max_dte):
         "num_puts": len(chain.puts),
         "calls_oi": calls_oi,
         "puts_oi": puts_oi,
+        "sample_gamma": float(gamma),
     }
