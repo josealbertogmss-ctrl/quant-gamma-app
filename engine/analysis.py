@@ -57,8 +57,21 @@ def run_analysis(symbol, max_dte):
         * calls_df["openInterest"]
     )
 
+    gex_by_strike = (
+        calls_df
+        .groupby("strike")["gex"]
+        .sum()
+        .reset_index()
+    )
+    
     total_call_gex = float(
         calls_df["gex"].sum()
+    )
+
+    top_call_strike = float(
+        gex_by_strike.loc[
+            gex_by_strike["gex"].idxmax()
+        ]["strike"]
     )
     
     return {
@@ -73,4 +86,5 @@ def run_analysis(symbol, max_dte):
         "puts_oi": puts_oi,
         "sample_gamma": float(gamma),
         "total_call_gex": total_call_gex,
+        "top_call_strike": top_call_strike,
     }
