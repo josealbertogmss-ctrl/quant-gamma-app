@@ -19,7 +19,14 @@ def run_analysis(symbol, max_dte):
         ticker,
         first_expiration
     )
-    
+
+    calls_oi = int(
+        chain.calls["openInterest"].fillna(0).sum()
+    )
+
+    puts_oi = int(
+        chain.puts["openInterest"].fillna(0).sum()
+    )
 
     return {
         "symbol": symbol,
@@ -27,6 +34,8 @@ def run_analysis(symbol, max_dte):
         "max_dte": max_dte,
         "num_expirations": len(expirations),
         "first_expiration": first_expiration,
-        "calls": len(chain.calls),
-        "puts": len(chain.puts),
+        "num_calls": len(chain.calls),
+        "num_puts": len(chain.puts),
+        "calls_oi": calls_oi,
+        "puts_oi": puts_oi,
     }
