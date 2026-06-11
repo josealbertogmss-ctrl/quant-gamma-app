@@ -16,7 +16,11 @@ def get_spot_price(ticker):
         )["Close"].iloc[-1]
     )
 
+
 def get_expirations(ticker):
+
+    return ticker.options
+
 
 def download_option_chain(
     ticker,
@@ -24,5 +28,3 @@ def download_option_chain(
 ):
 
     return ticker.option_chain(expiration)
-
-    return ticker.options
