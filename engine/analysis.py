@@ -131,4 +131,5 @@ def run_analysis(symbol, max_dte):
         "total_call_gex": total_call_gex,
         "top_call_strike": top_call_strike,
         "top_net_strike": top_net_strike,
+        "net_gex_by_strike": net_gex_by_strike,
     }
