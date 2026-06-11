@@ -18,4 +18,11 @@ def get_spot_price(ticker):
 
 def get_expirations(ticker):
 
+def download_option_chain(
+    ticker,
+    expiration
+):
+
+    return ticker.option_chain(expiration)
+
     return ticker.options
