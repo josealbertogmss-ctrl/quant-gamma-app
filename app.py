@@ -1,4 +1,7 @@
 import streamlit as st
+from charts.plotly_charts import (
+    create_gex_chart
+)
 
 from engine.analysis import run_analysis
 
@@ -23,4 +26,11 @@ if st.button("Analizar"):
         max_dte
     )
 
-    st.write(results)
+st.write(results)
+
+st.plotly_chart(
+    create_gex_chart(
+        results["net_gex_by_strike"]
+    ),
+    use_container_width=True
+)
