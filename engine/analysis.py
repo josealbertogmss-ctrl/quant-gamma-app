@@ -1,3 +1,5 @@
+import pandas as pd
+
 from engine.data import (
     load_ticker,
     get_spot_price,
@@ -26,6 +28,14 @@ def run_analysis(symbol, max_dte):
 
     calls_df = chain.calls.copy()
 
+    puts_df = chain.puts.copy()
+
+    calls_df["type"] = "call"
+
+    puts_df["type"] = "put"
+
+
+
     calls_oi = int(
         chain.calls["openInterest"].fillna(0).sum()
     )
@@ -52,9 +62,21 @@ def run_analysis(symbol, max_dte):
         30 / 365
     )
 
+    puts_df["gamma"] = calc_gamma_vectorized(
+        spot,
+        puts_df["strike"],
+        puts_df["impliedVolatility"],
+        30 / 365
+    )
+    
     calls_df["gex"] = (
         calls_df["gamma"]
         * calls_df["openInterest"]
+    )
+
+    puts_df["gex"] = (
+        -puts_df["gamma"]
+        * puts_df["openInterest"]
     )
 
     gex_by_strike = (
@@ -68,9 +90,30 @@ def run_analysis(symbol, max_dte):
         calls_df["gex"].sum()
     )
 
+    options_df = pd.concat(
+        [
+            calls_df,
+            puts_df
+        ],
+        ignore_index=True
+    )
+    
     top_call_strike = float(
         gex_by_strike.loc[
             gex_by_strike["gex"].idxmax()
+        ]["strike"]
+    )
+
+    net_gex_by_strike = (
+        options_df
+        .groupby("strike")["gex"]
+        .sum()
+        .reset_index()
+    )
+
+    top_net_strike = float(
+        net_gex_by_strike.loc[
+            net_gex_by_strike["gex"].abs().idxmax()
         ]["strike"]
     )
     
@@ -87,4 +130,5 @@ def run_analysis(symbol, max_dte):
         "sample_gamma": float(gamma),
         "total_call_gex": total_call_gex,
         "top_call_strike": top_call_strike,
+        "top_net_strike": top_net_strike,
     }
