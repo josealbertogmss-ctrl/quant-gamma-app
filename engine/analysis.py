@@ -1,13 +1,16 @@
 # engine/analysis.py
 
-import yfinance as yf
+from engine.data import (
+    load_ticker,
+    get_spot_price
+)
 
 
 def run_analysis(symbol, max_dte):
 
-    ticker = yf.Ticker(symbol)
+ticker = load_ticker(symbol)
 
-    spot = ticker.history(period="1d")["Close"].iloc[-1]
+spot = get_spot_price(ticker)
 
     return {
         "symbol": symbol,
