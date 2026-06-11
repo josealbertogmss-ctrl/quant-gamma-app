@@ -36,3 +36,20 @@ if st.button("Analizar"):
         ),
         width="stretch"
     )
+
+col1, col2, col3 = st.columns(3)
+
+col1.metric(
+    "Spot",
+    round(results["spot"], 2)
+)
+
+col2.metric(
+    "Top Call",
+    results["top_call_strike"]
+)
+
+col3.metric(
+    "Top Net",
+    results["top_net_strike"]
+)
