@@ -24,6 +24,8 @@ def run_analysis(symbol, max_dte):
         first_expiration
     )
 
+    calls_df = chain.calls.copy()
+
     calls_oi = int(
         chain.calls["openInterest"].fillna(0).sum()
     )
@@ -42,6 +44,22 @@ def run_analysis(symbol, max_dte):
         sample_iv,
         30/365
     )
+
+    calls_df["gamma"] = calc_gamma_vectorized(
+        spot,
+        calls_df["strike"],
+        calls_df["impliedVolatility"],
+        30 / 365
+    )
+
+    calls_df["gex"] = (
+        calls_df["gamma"]
+        * calls_df["openInterest"]
+    )
+
+    total_call_gex = float(
+        calls_df["gex"].sum()
+    )
     
     return {
         "symbol": symbol,
@@ -54,4 +72,5 @@ def run_analysis(symbol, max_dte):
         "calls_oi": calls_oi,
         "puts_oi": puts_oi,
         "sample_gamma": float(gamma),
+        "total_call_gex": total_call_gex,
     }
