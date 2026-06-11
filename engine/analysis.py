@@ -16,6 +16,6 @@ def run_analysis(symbol, max_dte):
     return {
         "symbol": symbol,
         "spot": float(spot),
-        "max_dte": max_dte
+        "max_dte": max_dte,
         "num_expirations": len(expirations),
     }
