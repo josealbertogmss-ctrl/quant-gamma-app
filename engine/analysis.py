@@ -1,6 +1,7 @@
 import pandas as pd
 
-# Funciones de acceso a datos (Yahoo Finance)
+from datetime import datetime
+
 from engine.data import (
     load_ticker,
     get_spot_price,
@@ -8,7 +9,6 @@ from engine.data import (
     download_option_chain
 )
 
-# Funciones matemáticas (Black-Scholes, Gamma, etc.)
 from engine.calculations import (
     calc_gamma_vectorized
 )
@@ -17,72 +17,108 @@ from engine.calculations import (
 def run_analysis(symbol, max_dte):
 
     # ============================================================
-    # 1. CARGA DEL ACTIVO
+    # CARGA DEL ACTIVO
     # ============================================================
 
-    # Descarga el objeto ticker desde Yahoo
     ticker = load_ticker(symbol)
 
-    # Obtiene el precio spot actual
     spot = get_spot_price(ticker)
 
-    # ============================================================
-    # 2. EXPIRACIONES DISPONIBLES
-    # ============================================================
-
-    # Lista de todas las expiraciones disponibles
     expirations = get_expirations(ticker)
 
-    # De momento trabajamos SOLO con la primera expiración
-    # (más adelante recorreremos todas)
-    first_expiration = expirations[0]
-
     # ============================================================
-    # 3. DESCARGA DE OPTION CHAIN
+    # DESCARGA DE TODAS LAS OPCIONES <= MAX_DTE
     # ============================================================
 
-    # Descarga Calls y Puts de la expiración seleccionada
-    chain = download_option_chain(
-        ticker,
-        first_expiration
+    all_options = []
+
+    today = datetime.today()
+
+    for expiration in expirations:
+
+        exp_date = datetime.strptime(
+            expiration,
+            "%Y-%m-%d"
+        )
+
+        dte = (
+            exp_date - today
+        ).days
+
+        if dte > max_dte:
+            continue
+
+        chain = download_option_chain(
+            ticker,
+            expiration
+        )
+
+        calls_df = chain.calls.copy()
+        puts_df = chain.puts.copy()
+
+        calls_df["type"] = "call"
+        puts_df["type"] = "put"
+
+        calls_df["dte"] = dte
+        puts_df["dte"] = dte
+
+        all_options.append(calls_df)
+        all_options.append(puts_df)
+
+    # ============================================================
+    # SI NO HAY OPCIONES EN EL RANGO
+    # ============================================================
+
+    if len(all_options) == 0:
+
+        return {
+            "symbol": symbol,
+            "spot": float(spot),
+            "max_dte": max_dte,
+            "num_options": 0
+        }
+
+    # ============================================================
+    # DATAFRAME UNIFICADO
+    # ============================================================
+
+    options_df = pd.concat(
+        all_options,
+        ignore_index=True
     )
 
-    # Copias de trabajo
-    calls_df = chain.calls.copy()
-    puts_df = chain.puts.copy()
+    calls_df = options_df[
+        options_df["type"] == "call"
+    ].copy()
 
-    # Etiquetas para distinguir Calls y Puts
-    calls_df["type"] = "call"
-    puts_df["type"] = "put"
+    puts_df = options_df[
+        options_df["type"] == "put"
+    ].copy()
 
     # ============================================================
-    # 4. OPEN INTEREST AGREGADO
+    # OPEN INTEREST TOTAL
     # ============================================================
 
-    # Open Interest total de Calls
     calls_oi = int(
-        chain.calls["openInterest"]
+        calls_df["openInterest"]
         .fillna(0)
         .sum()
     )
 
-    # Open Interest total de Puts
     puts_oi = int(
-        chain.puts["openInterest"]
+        puts_df["openInterest"]
         .fillna(0)
         .sum()
     )
 
     # ============================================================
-    # 5. PRUEBA DE GAMMA INDIVIDUAL
+    # GAMMA DE EJEMPLO
     # ============================================================
 
-    # Primera opción de la cadena
-    sample_strike = chain.calls.iloc[0]["strike"]
+    sample_strike = calls_df.iloc[0]["strike"]
 
-    sample_iv = chain.calls.iloc[0]["impliedVolatility"]
+    sample_iv = calls_df.iloc[0]["impliedVolatility"]
 
-    # Cálculo de Gamma para una sola opción
     gamma = calc_gamma_vectorized(
         spot,
         sample_strike,
@@ -91,7 +127,7 @@ def run_analysis(symbol, max_dte):
     )
 
     # ============================================================
-    # 6. GAMMA PARA TODAS LAS CALLS
+    # GAMMA CALLS
     # ============================================================
 
     calls_df["gamma"] = calc_gamma_vectorized(
@@ -102,7 +138,7 @@ def run_analysis(symbol, max_dte):
     )
 
     # ============================================================
-    # 7. GAMMA PARA TODAS LAS PUTS
+    # GAMMA PUTS
     # ============================================================
 
     puts_df["gamma"] = calc_gamma_vectorized(
@@ -113,24 +149,21 @@ def run_analysis(symbol, max_dte):
     )
 
     # ============================================================
-    # 8. GEX INDIVIDUAL
+    # GEX
     # ============================================================
 
-    # Call GEX
     calls_df["gex"] = (
         calls_df["gamma"]
         * calls_df["openInterest"]
     )
 
-    # Put GEX
-    # Signo negativo para obtener Net GEX
     puts_df["gex"] = (
         -puts_df["gamma"]
         * puts_df["openInterest"]
     )
 
     # ============================================================
-    # 9. GEX POR STRIKE (SOLO CALLS)
+    # GEX CALLS POR STRIKE
     # ============================================================
 
     gex_by_strike = (
@@ -144,8 +177,14 @@ def run_analysis(symbol, max_dte):
         calls_df["gex"].sum()
     )
 
+    top_call_strike = float(
+        gex_by_strike.loc[
+            gex_by_strike["gex"].idxmax()
+        ]["strike"]
+    )
+
     # ============================================================
-    # 10. UNIFICACIÓN CALLS + PUTS
+    # NET GEX
     # ============================================================
 
     options_df = pd.concat(
@@ -156,30 +195,12 @@ def run_analysis(symbol, max_dte):
         ignore_index=True
     )
 
-    # ============================================================
-    # 11. STRIKE CON MAYOR CALL GEX
-    # ============================================================
-
-    top_call_strike = float(
-        gex_by_strike.loc[
-            gex_by_strike["gex"].idxmax()
-        ]["strike"]
-    )
-
-    # ============================================================
-    # 12. NET GEX POR STRIKE
-    # ============================================================
-
     net_gex_by_strike = (
         options_df
         .groupby("strike")["gex"]
         .sum()
         .reset_index()
     )
-
-    # ============================================================
-    # 13. STRIKE DOMINANTE DE NET GEX
-    # ============================================================
 
     top_net_strike = float(
         net_gex_by_strike.loc[
@@ -190,7 +211,7 @@ def run_analysis(symbol, max_dte):
     )
 
     # ============================================================
-    # 14. RESULTADO DEVUELTO A STREAMLIT
+    # RESULTADOS
     # ============================================================
 
     return {
@@ -198,9 +219,7 @@ def run_analysis(symbol, max_dte):
         "spot": float(spot),
         "max_dte": max_dte,
         "num_expirations": len(expirations),
-        "first_expiration": first_expiration,
-        "num_calls": len(chain.calls),
-        "num_puts": len(chain.puts),
+        "num_options": len(options_df),
         "calls_oi": calls_oi,
         "puts_oi": puts_oi,
         "sample_gamma": float(gamma),
