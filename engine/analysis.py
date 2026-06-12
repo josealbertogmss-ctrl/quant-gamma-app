@@ -26,6 +26,8 @@ def run_analysis(symbol, max_dte):
 
     today = datetime.today()
 
+    term_structure = []
+
     for expiration in expirations:
 
         exp_date = datetime.strptime(
@@ -37,13 +39,46 @@ def run_analysis(symbol, max_dte):
             exp_date - today
         ).days
 
-        if dte > max_dte:
+        if dte < 0:
             continue
 
         chain = download_option_chain(
             ticker,
             expiration
         )
+
+        #
+        # TERM STRUCTURE
+        #
+
+        try:
+
+            calls_tmp = chain.calls.copy()
+
+            atm_idx = (
+                calls_tmp["strike"] - spot
+            ).abs().idxmin()
+
+            atm_iv = float(
+                calls_tmp.loc[
+                    atm_idx,
+                    "impliedVolatility"
+                ]
+            )
+
+            term_structure.append(
+                {
+                    "expiration": expiration,
+                    "dte": dte,
+                    "iv": atm_iv
+                }
+            )
+
+        except Exception:
+            pass
+
+        if dte > max_dte:
+            continue
 
         calls_df = chain.calls.copy()
         puts_df = chain.puts.copy()
@@ -71,6 +106,34 @@ def run_analysis(symbol, max_dte):
         ignore_index=True
     )
 
+    #
+    # FILTRO 85%-115%
+    #
+
+    low_strike = spot * 0.85
+    high_strike = spot * 1.15
+
+    options_df = options_df[
+        (
+            options_df["strike"] >= low_strike
+        )
+        &
+        (
+            options_df["strike"] <= high_strike
+        )
+    ]
+
+    options_df = options_df.dropna(
+        subset=[
+            "impliedVolatility",
+            "openInterest"
+        ]
+    )
+
+    options_df = options_df[
+        options_df["openInterest"] > 0
+    ]
+
     calls_df = options_df[
         options_df["type"] == "call"
     ].copy()
@@ -81,13 +144,11 @@ def run_analysis(symbol, max_dte):
 
     calls_oi = int(
         calls_df["openInterest"]
-        .fillna(0)
         .sum()
     )
 
     puts_oi = int(
         puts_df["openInterest"]
-        .fillna(0)
         .sum()
     )
 
@@ -118,10 +179,6 @@ def run_analysis(symbol, max_dte):
         puts_df["dte"] / 365
     )
 
-    #
-    # GEX REAL (igual que Colab)
-    #
-
     calls_df["gex"] = (
         calls_df["gamma"]
         * calls_df["openInterest"]
@@ -138,34 +195,6 @@ def run_analysis(symbol, max_dte):
         * 0.01
     )
 
-    total_call_gex = float(
-        calls_df["gex"].sum()
-    )
-
-    #
-    # CALL WALL
-    #
-
-    call_wall = float(
-        calls_df.loc[
-            calls_df["gex"].idxmax()
-        ]["strike"]
-    )
-
-    #
-    # PUT WALL
-    #
-
-    put_wall = float(
-        puts_df.loc[
-            puts_df["gex"].idxmin()
-        ]["strike"]
-    )
-
-    #
-    # NET GEX
-    #
-
     options_df = pd.concat(
         [
             calls_df,
@@ -179,6 +208,118 @@ def run_analysis(symbol, max_dte):
         .groupby("strike")["gex"]
         .sum()
         .reset_index()
+        .sort_values("strike")
+    )
+
+    #
+    # WALLS
+    #
+
+    call_walls = (
+        calls_df
+        .groupby("strike")["gex"]
+        .sum()
+        .sort_values(
+            ascending=False
+        )
+        .head(3)
+        .index
+        .tolist()
+    )
+
+    put_walls = (
+        puts_df
+        .groupby("strike")["gex"]
+        .sum()
+        .sort_values()
+        .head(3)
+        .index
+        .tolist()
+    )
+
+    call_wall = (
+        call_walls[0]
+        if len(call_walls) > 0
+        else None
+    )
+
+    put_wall = (
+        put_walls[0]
+        if len(put_walls) > 0
+        else None
+    )
+
+    #
+    # GAMMA FLIP
+    #
+
+    net_gex_by_strike["sign"] = (
+        net_gex_by_strike["gex"]
+        .apply(
+            lambda x:
+            1 if x > 0 else -1
+        )
+    )
+
+    net_gex_by_strike["flip"] = (
+        net_gex_by_strike["sign"]
+        .diff()
+    )
+
+    flips = net_gex_by_strike[
+        net_gex_by_strike["flip"] != 0
+    ]
+
+    gamma_flip = None
+
+    if len(flips) > 0:
+
+        gamma_flip = float(
+            flips.iloc[
+                (
+                    flips["strike"]
+                    - spot
+                ).abs().argmin()
+            ]["strike"]
+        )
+
+    #
+    # EXPECTED MOVE
+    #
+
+    term_df = pd.DataFrame(
+        term_structure
+    )
+
+    selected_row = term_df.iloc[
+        (
+            term_df["dte"]
+            - max_dte
+        ).abs().argmin()
+    ]
+
+    selected_dte_real = int(
+        selected_row["dte"]
+    )
+
+    selected_iv_atm = float(
+        selected_row["iv"]
+    )
+
+    expected_move = (
+        spot
+        * selected_iv_atm
+        * (
+            selected_dte_real / 365
+        ) ** 0.5
+    )
+
+    lower_expected = (
+        spot - expected_move
+    )
+
+    upper_expected = (
+        spot + expected_move
     )
 
     top_net_strike = float(
@@ -189,18 +330,29 @@ def run_analysis(symbol, max_dte):
         ]["strike"]
     )
 
+    total_net_gex = float(
+        net_gex_by_strike["gex"]
+        .sum()
+    )
+
     return {
         "symbol": symbol,
         "spot": float(spot),
         "max_dte": max_dte,
-        "num_expirations": len(expirations),
-        "num_options": len(options_df),
         "calls_oi": calls_oi,
         "puts_oi": puts_oi,
         "sample_gamma": float(gamma),
-        "total_call_gex": total_call_gex,
         "call_wall": call_wall,
         "put_wall": put_wall,
+        "call_walls": call_walls,
+        "put_walls": put_walls,
+        "gamma_flip": gamma_flip,
         "top_net_strike": top_net_strike,
-        "net_gex_by_strike": net_gex_by_strike,
+        "total_net_gex": total_net_gex,
+        "selected_iv_atm": selected_iv_atm,
+        "selected_dte_real": selected_dte_real,
+        "expected_move": expected_move,
+        "lower_expected": lower_expected,
+        "upper_expected": upper_expected,
+        "net_gex_by_strike": net_gex_by_strike
     }
