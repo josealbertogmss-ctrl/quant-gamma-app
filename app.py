@@ -1,22 +1,15 @@
 import streamlit as st
+import pandas as pd
+
+from engine.analysis import run_analysis
 
 from charts.plotly_charts import (
     create_gex_chart
 )
 
-from engine.analysis import run_analysis
-
-
-# ============================================================
-# CABECERA
-# ============================================================
-
-st.title("Gamma Dashboard")
-
-
-# ============================================================
-# INPUTS
-# ============================================================
+st.title(
+    "Gamma Dashboard"
+)
 
 ticker = st.text_input(
     "Ticker",
@@ -30,11 +23,6 @@ max_dte = st.slider(
     30
 )
 
-
-# ============================================================
-# EJECUCIÓN
-# ============================================================
-
 if st.button("Analizar"):
 
     results = run_analysis(
@@ -42,15 +30,20 @@ if st.button("Analizar"):
         max_dte
     )
 
-    # ========================================================
-    # MÉTRICAS
-    # ========================================================
+    st.session_state["results"] = results
 
-    col1, col2, col3, col4 = st.columns(4)
+if "results" in st.session_state:
+
+    results = st.session_state["results"]
+
+    col1, col2, col3 = st.columns(3)
 
     col1.metric(
         "Spot",
-        round(results["spot"], 2)
+        round(
+            results["spot"],
+            2
+        )
     )
 
     col2.metric(
@@ -63,26 +56,79 @@ if st.button("Analizar"):
         results["put_wall"]
     )
 
-    col4.metric(
-        "Top Net",
-        results["top_net_strike"]
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric(
+        "Gamma Flip",
+        (
+            round(
+                results["gamma_flip"],
+                2
+            )
+            if results["gamma_flip"]
+            else "N/A"
+        )
     )
 
-    # ========================================================
-    # DEBUG
-    # ========================================================
+    col2.metric(
+        "Expected Move",
+        round(
+            results["expected_move"],
+            2
+        )
+    )
 
-    with st.expander("Debug"):
-
-        st.write(results)
-
-    # ========================================================
-    # GRÁFICO
-    # ========================================================
+    col3.metric(
+        "IV ATM",
+        round(
+            results["selected_iv_atm"]
+            * 100,
+            2
+        )
+    )
 
     st.plotly_chart(
         create_gex_chart(
-            results["net_gex_by_strike"]
+            results["net_gex_by_strike"],
+            results["spot"],
+            results["call_wall"],
+            results["put_wall"],
+            results["gamma_flip"],
+            results["lower_expected"],
+            results["upper_expected"]
         ),
         width="stretch"
     )
+
+    st.subheader(
+        "Top Call Walls"
+    )
+
+    st.dataframe(
+        pd.DataFrame(
+            {
+                "Strike":
+                results["call_walls"]
+            }
+        ),
+        width="stretch"
+    )
+
+    st.subheader(
+        "Top Put Walls"
+    )
+
+    st.dataframe(
+        pd.DataFrame(
+            {
+                "Strike":
+                results["put_walls"]
+            }
+        ),
+        width="stretch"
+    )
+
+    with st.expander(
+        "Debug"
+    ):
+        st.write(results)
