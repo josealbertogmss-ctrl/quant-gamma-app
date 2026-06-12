@@ -1,138 +1,112 @@
-import streamlit as st
+import os
 
-from engine.data import (
-    get_expirations
-)
+import pandas as pd
+import yfinance as yf
 
-from engine.analysis import (
-    run_analysis
-)
 
-from charts.plotly_charts import (
-    create_gex_chart
-)
+def load_ticker(symbol):
 
-st.set_page_config(
-    page_title="Quant Gamma",
-    layout="wide"
-)
+    return yf.Ticker(symbol)
 
-st.title("Quant Gamma Dashboard")
 
-ticker = st.text_input(
-    "Ticker",
-    value="SPY"
-).upper()
+def get_spot_price(ticker):
 
-#
-# CARGAR EXPIRACIONES
-#
-
-if st.button("Cargar expiraciones"):
-
-    try:
-
-        expirations = get_expirations(
-            ticker
-        )
-
-        st.session_state[
-            "expirations"
-        ] = expirations
-
-    except Exception as e:
-
-        st.error(
-            f"Error cargando expiraciones: {e}"
-        )
-
-#
-# SELECTOR DE EXPIRACIÓN
-#
-
-selected_expiration = None
-
-if "expirations" in st.session_state:
-
-    selected_expiration = st.selectbox(
-        "Selecciona expiración",
-        st.session_state["expirations"]
+    return float(
+        ticker.history(
+            period="1d"
+        )["Close"].iloc[-1]
     )
 
-#
-# ANALIZAR
-#
 
-if (
-    selected_expiration
-    and
-    st.button("Analizar")
+def get_expirations(ticker):
+
+    return ticker.options
+
+
+def download_option_chain(
+    ticker,
+    expiration
 ):
 
-    with st.spinner(
-        "Calculando Gamma..."
-    ):
-
-        results = run_analysis(
-            ticker,
-            selected_expiration
-        )
-
-    st.session_state[
-        "results"
-    ] = results
-
-#
-# MOSTRAR RESULTADOS
-#
-
-if "results" in st.session_state:
-
-    results = st.session_state[
-        "results"
-    ]
-
-    col1, col2, col3, col4, col5 = st.columns(5)
-
-    col1.metric(
-        "Spot",
-        round(
-            results["spot"],
-            2
-        )
+    return ticker.option_chain(
+        expiration
     )
 
-    col2.metric(
-        "Call Wall",
-        results["call_wall"]
+
+def save_snapshot(symbol):
+
+    ticker = load_ticker(symbol)
+
+    spot = get_spot_price(
+        ticker
     )
 
-    col3.metric(
-        "Put Wall",
-        results["put_wall"]
+    expirations = get_expirations(
+        ticker
     )
 
-    col4.metric(
-        "Gamma Flip",
-        results["gamma_flip"]
+    all_options = []
+
+    for expiration in expirations:
+
+        try:
+
+            chain = download_option_chain(
+                ticker,
+                expiration
+            )
+
+            calls = chain.calls.copy()
+            puts = chain.puts.copy()
+
+            calls["type"] = "call"
+            puts["type"] = "put"
+
+            calls["expiration"] = expiration
+            puts["expiration"] = expiration
+
+            all_options.append(
+                calls
+            )
+
+            all_options.append(
+                puts
+            )
+
+        except Exception:
+
+            continue
+
+    df = pd.concat(
+        all_options,
+        ignore_index=True
     )
 
-    col5.metric(
-        "Expected Move",
-        round(
-            results["expected_move"],
-            2
-        )
+    os.makedirs(
+        "data",
+        exist_ok=True
     )
 
-    st.plotly_chart(
-        create_gex_chart(
-            results["net_gex_by_strike"]
-        ),
-        width="stretch"
+    filename = (
+        f"data/{symbol}_latest.parquet"
     )
 
-    with st.expander(
-        "Debug"
-    ):
-        st.write(results)
+    df.to_parquet(
+        filename
+    )
+
+    return {
+        "spot": spot,
+        "file": filename
+    }
+
+
+def load_snapshot(symbol):
+
+    filename = (
+        f"data/{symbol}_latest.parquet"
+    )
+
+    return pd.read_parquet(
+        filename
+    )
