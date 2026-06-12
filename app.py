@@ -1,13 +1,15 @@
 import streamlit as st
 
+from datetime import datetime
+
 from engine.analysis import (
     run_analysis
 )
 
 from engine.snapshot import (
-    get_available_expirations,
     update_snapshot,
-    snapshot_exists
+    snapshot_exists,
+    load_snapshot
 )
 
 from charts.plotly_charts import (
@@ -32,42 +34,19 @@ ticker = st.text_input(
 ).upper()
 
 #
-# CARGAR EXPIRACIONES
+# SNAPSHOT STATUS
 #
 
-expirations = []
+snapshot_available = False
 
 if ticker:
 
-    try:
-
-        expirations = (
-            get_available_expirations(
-                ticker
-            )
-        )
-
-    except Exception as e:
-
-        st.error(
-            f"Error obteniendo expiraciones: {e}"
-        )
-
-#
-# SELECTOR DE EXPIRACIÓN
-#
-
-selected_expiration = None
-
-if len(expirations) > 0:
-
-    selected_expiration = st.selectbox(
-        "Expiración máxima",
-        expirations
+    snapshot_available = snapshot_exists(
+        ticker
     )
 
 #
-# BOTÓN SNAPSHOT
+# BOTONES
 #
 
 col1, col2 = st.columns(2)
@@ -92,15 +71,15 @@ with col1:
                 "Snapshot actualizado"
             )
 
+            st.rerun()
+
         except Exception as e:
 
             st.error(str(e))
 
 with col2:
 
-    if snapshot_exists(
-        ticker
-    ):
+    if snapshot_available:
 
         st.success(
             "Snapshot disponible"
@@ -113,6 +92,44 @@ with col2:
         )
 
 #
+# EXPIRACIONES DESDE SNAPSHOT
+#
+
+expirations = []
+
+selected_expiration = None
+
+if snapshot_available:
+
+    try:
+
+        snapshot_df = load_snapshot(
+            ticker
+        )
+
+        expirations = sorted(
+            snapshot_df[
+                "expiration"
+            ]
+            .dropna()
+            .unique()
+            .tolist()
+        )
+
+        if len(expirations) > 0:
+
+            selected_expiration = st.selectbox(
+                "Expiración máxima",
+                expirations
+            )
+
+    except Exception as e:
+
+        st.error(
+            f"Error leyendo snapshot: {e}"
+        )
+
+#
 # DTE
 #
 
@@ -120,31 +137,19 @@ max_dte = 30
 
 if selected_expiration:
 
-    try:
+    exp_date = datetime.strptime(
+        selected_expiration,
+        "%Y-%m-%d"
+    )
 
-        from datetime import (
-            datetime
-        )
-
-        exp_date = datetime.strptime(
-            selected_expiration,
-            "%Y-%m-%d"
-        )
-
-        max_dte = (
-            exp_date
-            - datetime.today()
-        ).days
-
-    except Exception:
-
-        max_dte = 30
+    max_dte = (
+        exp_date
+        - datetime.today()
+    ).days
 
 #
 # ANALIZAR
 #
-
-results = None
 
 if st.button(
     "Analizar"
@@ -166,7 +171,7 @@ if st.button(
         st.error(str(e))
 
 #
-# RECUPERAR RESULTADOS
+# RESULTADOS
 #
 
 if "results" in st.session_state:
@@ -210,11 +215,13 @@ if "results" in st.session_state:
                 "net_gex_by_strike"
             ]
         ),
-        width="stretch"
+        use_container_width=True
     )
 
     with st.expander(
         "Debug"
     ):
 
-        st.write(results)
+        st.write(
+            results
+        )
