@@ -1,7 +1,6 @@
 # engine/snapshot.py
 
 import os
-import shutil
 import pandas as pd
 
 from datetime import datetime
@@ -34,11 +33,6 @@ def get_snapshot_path(symbol):
 
 def get_available_expirations(symbol):
 
-    #
-    # Ya no llamamos a Yahoo.
-    # Leemos expiraciones desde snapshot.
-    #
-
     df = load_snapshot(symbol)
 
     expirations = sorted(
@@ -51,13 +45,26 @@ def get_available_expirations(symbol):
     return expirations
 
 
+#
+# Alias para compatibilidad con app.py
+#
+
+def get_snapshot_expirations(symbol):
+
+    return get_available_expirations(
+        symbol
+    )
+
+
 def download_snapshot(symbol):
 
     ticker = load_ticker(symbol)
 
     spot = get_spot_price(ticker)
 
-    expirations = get_expirations(ticker)
+    expirations = get_expirations(
+        ticker
+    )
 
     today = datetime.today()
 
@@ -93,8 +100,13 @@ def download_snapshot(symbol):
             puts["expiration"] = expiration
             puts["dte"] = dte
 
-            all_options.append(calls)
-            all_options.append(puts)
+            all_options.append(
+                calls
+            )
+
+            all_options.append(
+                puts
+            )
 
         except Exception as e:
 
@@ -119,7 +131,9 @@ def download_snapshot(symbol):
 
     options_df["snapshot_time"] = (
         datetime.now()
-        .strftime("%Y-%m-%d %H:%M:%S")
+        .strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
     )
 
     return options_df
@@ -143,7 +157,7 @@ def save_snapshot(
     )
 
     #
-    # HISTÓRICO
+    # Snapshot histórico
     #
 
     timestamp = datetime.now().strftime(
@@ -161,7 +175,7 @@ def save_snapshot(
     )
 
     #
-    # LATEST
+    # Snapshot latest
     #
 
     latest_path = get_snapshot_path(
@@ -188,7 +202,9 @@ def load_snapshot(symbol):
             f"No existe snapshot para {symbol}"
         )
 
-    return pd.read_parquet(path)
+    return pd.read_parquet(
+        path
+    )
 
 
 def snapshot_exists(symbol):
@@ -197,7 +213,9 @@ def snapshot_exists(symbol):
         symbol
     )
 
-    return os.path.exists(path)
+    return os.path.exists(
+        path
+    )
 
 
 def update_snapshot(symbol):
@@ -276,13 +294,15 @@ def get_snapshot_info(symbol):
         return None
 
     modified = datetime.fromtimestamp(
-        os.path.getmtime(path)
+        os.path.getmtime(
+            path
+        )
     )
 
     size_mb = round(
-        os.path.getsize(path)
-        / 1024
-        / 1024,
+        os.path.getsize(
+            path
+        ) / 1024 / 1024,
         2
     )
 
@@ -318,7 +338,9 @@ def list_history(symbol):
         ):
             continue
 
-        files.append(filename)
+        files.append(
+            filename
+        )
 
     files.sort(
         reverse=True
