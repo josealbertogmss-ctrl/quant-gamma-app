@@ -1,7 +1,13 @@
 import streamlit as st
 import pandas as pd
 
-from engine.analysis import run_analysis
+from engine.data import (
+    get_expirations
+)
+
+from engine.analysis import (
+    run_analysis
+)
 
 from charts.plotly_charts import (
     create_gex_chart
@@ -11,30 +17,82 @@ st.title(
     "Gamma Dashboard"
 )
 
+#
+# TICKER
+#
+
 ticker = st.text_input(
     "Ticker",
     value="SPY"
-)
+).upper()
 
-max_dte = st.slider(
-    "DTE máximo",
-    1,
-    365,
-    30
-)
+#
+# CARGAR EXPIRACIONES
+#
 
-if st.button("Analizar"):
+if st.button("Cargar expiraciones"):
 
-    results = run_analysis(
-        ticker,
-        max_dte
+    try:
+
+        expirations = get_expirations(
+            ticker
+        )
+
+        st.session_state[
+            "expirations"
+        ] = expirations
+
+        st.success(
+            f"{len(expirations)} expiraciones encontradas"
+        )
+
+    except Exception as e:
+
+        st.error(
+            str(e)
+        )
+
+#
+# SELECTOR DE EXPIRACIÓN
+#
+
+if "expirations" in st.session_state:
+
+    selected_expiration = st.selectbox(
+        "Expiración",
+        st.session_state[
+            "expirations"
+        ]
     )
 
-    st.session_state["results"] = results
+    #
+    # ANALIZAR
+    #
+
+    if st.button("Analizar"):
+
+        with st.spinner(
+            "Calculando..."
+        ):
+
+            results = run_analysis(
+                ticker,
+                selected_expiration
+            )
+
+            st.session_state[
+                "results"
+            ] = results
+
+#
+# RESULTADOS
+#
 
 if "results" in st.session_state:
 
-    results = st.session_state["results"]
+    results = st.session_state[
+        "results"
+    ]
 
     col1, col2, col3 = st.columns(3)
 
@@ -131,4 +189,6 @@ if "results" in st.session_state:
     with st.expander(
         "Debug"
     ):
-        st.write(results)
+        st.write(
+            results
+        )
