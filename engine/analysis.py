@@ -16,19 +16,11 @@ from engine.calculations import (
 
 def run_analysis(symbol, max_dte):
 
-    # ============================================================
-    # CARGA DEL ACTIVO
-    # ============================================================
-
     ticker = load_ticker(symbol)
 
     spot = get_spot_price(ticker)
 
     expirations = get_expirations(ticker)
-
-    # ============================================================
-    # DESCARGA DE TODAS LAS OPCIONES <= MAX_DTE
-    # ============================================================
 
     all_options = []
 
@@ -65,10 +57,6 @@ def run_analysis(symbol, max_dte):
         all_options.append(calls_df)
         all_options.append(puts_df)
 
-    # ============================================================
-    # SI NO HAY OPCIONES EN EL RANGO
-    # ============================================================
-
     if len(all_options) == 0:
 
         return {
@@ -77,10 +65,6 @@ def run_analysis(symbol, max_dte):
             "max_dte": max_dte,
             "num_options": 0
         }
-
-    # ============================================================
-    # DATAFRAME UNIFICADO
-    # ============================================================
 
     options_df = pd.concat(
         all_options,
@@ -95,10 +79,6 @@ def run_analysis(symbol, max_dte):
         options_df["type"] == "put"
     ].copy()
 
-    # ============================================================
-    # OPEN INTEREST TOTAL
-    # ============================================================
-
     calls_oi = int(
         calls_df["openInterest"]
         .fillna(0)
@@ -110,10 +90,6 @@ def run_analysis(symbol, max_dte):
         .fillna(0)
         .sum()
     )
-
-    # ============================================================
-    # GAMMA DE EJEMPLO
-    # ============================================================
 
     sample_strike = calls_df.iloc[0]["strike"]
 
@@ -128,20 +104,12 @@ def run_analysis(symbol, max_dte):
         sample_dte / 365
     )
 
-    # ============================================================
-    # GAMMA CALLS (DTE REAL)
-    # ============================================================
-
     calls_df["gamma"] = calc_gamma_vectorized(
         spot,
         calls_df["strike"],
         calls_df["impliedVolatility"],
         calls_df["dte"] / 365
     )
-
-    # ============================================================
-    # GAMMA PUTS (DTE REAL)
-    # ============================================================
 
     puts_df["gamma"] = calc_gamma_vectorized(
         spot,
@@ -150,44 +118,53 @@ def run_analysis(symbol, max_dte):
         puts_df["dte"] / 365
     )
 
-    # ============================================================
-    # GEX
-    # ============================================================
+    #
+    # GEX REAL (igual que Colab)
+    #
 
     calls_df["gex"] = (
         calls_df["gamma"]
         * calls_df["openInterest"]
+        * 100
+        * (spot ** 2)
+        * 0.01
     )
 
     puts_df["gex"] = (
         -puts_df["gamma"]
         * puts_df["openInterest"]
-    )
-
-    # ============================================================
-    # GEX CALLS POR STRIKE
-    # ============================================================
-
-    gex_by_strike = (
-        calls_df
-        .groupby("strike")["gex"]
-        .sum()
-        .reset_index()
+        * 100
+        * (spot ** 2)
+        * 0.01
     )
 
     total_call_gex = float(
         calls_df["gex"].sum()
     )
 
-    top_call_strike = float(
-        gex_by_strike.loc[
-            gex_by_strike["gex"].idxmax()
+    #
+    # CALL WALL
+    #
+
+    call_wall = float(
+        calls_df.loc[
+            calls_df["gex"].idxmax()
         ]["strike"]
     )
 
-    # ============================================================
+    #
+    # PUT WALL
+    #
+
+    put_wall = float(
+        puts_df.loc[
+            puts_df["gex"].idxmin()
+        ]["strike"]
+    )
+
+    #
     # NET GEX
-    # ============================================================
+    #
 
     options_df = pd.concat(
         [
@@ -212,10 +189,6 @@ def run_analysis(symbol, max_dte):
         ]["strike"]
     )
 
-    # ============================================================
-    # RESULTADOS
-    # ============================================================
-
     return {
         "symbol": symbol,
         "spot": float(spot),
@@ -226,7 +199,8 @@ def run_analysis(symbol, max_dte):
         "puts_oi": puts_oi,
         "sample_gamma": float(gamma),
         "total_call_gex": total_call_gex,
-        "top_call_strike": top_call_strike,
+        "call_wall": call_wall,
+        "put_wall": put_wall,
         "top_net_strike": top_net_strike,
         "net_gex_by_strike": net_gex_by_strike,
     }
