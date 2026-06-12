@@ -1,112 +1,220 @@
-import os
+import streamlit as st
 
-import pandas as pd
-import yfinance as yf
+from engine.analysis import (
+    run_analysis
+)
+
+from engine.snapshot import (
+    get_available_expirations,
+    update_snapshot,
+    snapshot_exists
+)
+
+from charts.plotly_charts import (
+    create_gex_chart
+)
 
 
-def load_ticker(symbol):
+st.set_page_config(
+    page_title="Gamma Dashboard",
+    layout="wide"
+)
 
-    return yf.Ticker(symbol)
+st.title("Gamma Dashboard")
 
+#
+# TICKER
+#
 
-def get_spot_price(ticker):
+ticker = st.text_input(
+    "Ticker",
+    value="SPY"
+).upper()
 
-    return float(
-        ticker.history(
-            period="1d"
-        )["Close"].iloc[-1]
+#
+# CARGAR EXPIRACIONES
+#
+
+expirations = []
+
+if ticker:
+
+    try:
+
+        expirations = (
+            get_available_expirations(
+                ticker
+            )
+        )
+
+    except Exception as e:
+
+        st.error(
+            f"Error obteniendo expiraciones: {e}"
+        )
+
+#
+# SELECTOR DE EXPIRACIÓN
+#
+
+selected_expiration = None
+
+if len(expirations) > 0:
+
+    selected_expiration = st.selectbox(
+        "Expiración máxima",
+        expirations
     )
 
+#
+# BOTÓN SNAPSHOT
+#
 
-def get_expirations(ticker):
+col1, col2 = st.columns(2)
 
-    return ticker.options
+with col1:
 
-
-def download_option_chain(
-    ticker,
-    expiration
-):
-
-    return ticker.option_chain(
-        expiration
-    )
-
-
-def save_snapshot(symbol):
-
-    ticker = load_ticker(symbol)
-
-    spot = get_spot_price(
-        ticker
-    )
-
-    expirations = get_expirations(
-        ticker
-    )
-
-    all_options = []
-
-    for expiration in expirations:
+    if st.button(
+        "Actualizar datos"
+    ):
 
         try:
 
-            chain = download_option_chain(
-                ticker,
-                expiration
+            with st.spinner(
+                "Descargando cadena completa..."
+            ):
+
+                update_snapshot(
+                    ticker
+                )
+
+            st.success(
+                "Snapshot actualizado"
             )
 
-            calls = chain.calls.copy()
-            puts = chain.puts.copy()
+        except Exception as e:
 
-            calls["type"] = "call"
-            puts["type"] = "put"
+            st.error(str(e))
 
-            calls["expiration"] = expiration
-            puts["expiration"] = expiration
+with col2:
 
-            all_options.append(
-                calls
-            )
+    if snapshot_exists(
+        ticker
+    ):
 
-            all_options.append(
-                puts
-            )
+        st.success(
+            "Snapshot disponible"
+        )
 
-        except Exception:
+    else:
 
-            continue
+        st.warning(
+            "No existe snapshot"
+        )
 
-    df = pd.concat(
-        all_options,
-        ignore_index=True
+#
+# DTE
+#
+
+max_dte = 30
+
+if selected_expiration:
+
+    try:
+
+        from datetime import (
+            datetime
+        )
+
+        exp_date = datetime.strptime(
+            selected_expiration,
+            "%Y-%m-%d"
+        )
+
+        max_dte = (
+            exp_date
+            - datetime.today()
+        ).days
+
+    except Exception:
+
+        max_dte = 30
+
+#
+# ANALIZAR
+#
+
+results = None
+
+if st.button(
+    "Analizar"
+):
+
+    try:
+
+        results = run_analysis(
+            ticker,
+            max_dte
+        )
+
+        st.session_state[
+            "results"
+        ] = results
+
+    except Exception as e:
+
+        st.error(str(e))
+
+#
+# RECUPERAR RESULTADOS
+#
+
+if "results" in st.session_state:
+
+    results = st.session_state[
+        "results"
+    ]
+
+    st.subheader(
+        "Métricas"
     )
 
-    os.makedirs(
-        "data",
-        exist_ok=True
+    col1, col2, col3, col4 = st.columns(4)
+
+    col1.metric(
+        "Spot",
+        round(
+            results["spot"],
+            2
+        )
     )
 
-    filename = (
-        f"data/{symbol}_latest.parquet"
+    col2.metric(
+        "Call Wall",
+        results["call_wall"]
     )
 
-    df.to_parquet(
-        filename
+    col3.metric(
+        "Put Wall",
+        results["put_wall"]
     )
 
-    return {
-        "spot": spot,
-        "file": filename
-    }
-
-
-def load_snapshot(symbol):
-
-    filename = (
-        f"data/{symbol}_latest.parquet"
+    col4.metric(
+        "Top Net",
+        results["top_net_strike"]
     )
 
-    return pd.read_parquet(
-        filename
+    st.plotly_chart(
+        create_gex_chart(
+            results[
+                "net_gex_by_strike"
+            ]
+        ),
+        width="stretch"
     )
+
+    with st.expander(
+        "Debug"
+    ):
+
+        st.write(results)
