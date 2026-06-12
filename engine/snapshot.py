@@ -12,7 +12,6 @@ from engine.data import (
     download_option_chain
 )
 
-
 CACHE_DIR = "data_cache"
 
 
@@ -26,13 +25,18 @@ def get_snapshot_path(symbol):
     )
 
 
-def get_available_expirations(symbol):
+def get_historical_snapshot_path(symbol):
 
-    ticker = load_ticker(symbol)
+    symbol = symbol.upper()
 
-    expirations = get_expirations(ticker)
+    timestamp = datetime.now().strftime(
+        "%Y%m%d_%H%M%S"
+    )
 
-    return list(expirations)
+    return os.path.join(
+        CACHE_DIR,
+        f"{symbol}_{timestamp}.parquet"
+    )
 
 
 def download_snapshot(symbol):
@@ -97,10 +101,6 @@ def download_snapshot(symbol):
         ignore_index=True
     )
 
-    #
-    # Guardamos spot dentro del dataframe
-    #
-
     options_df["spot"] = spot
 
     options_df["symbol"] = symbol.upper()
@@ -123,16 +123,35 @@ def save_snapshot(
         exist_ok=True
     )
 
-    path = get_snapshot_path(
+    #
+    # Latest snapshot
+    #
+
+    latest_path = get_snapshot_path(
         symbol
     )
 
     df.to_parquet(
-        path,
+        latest_path,
         index=False
     )
 
-    return path
+    #
+    # Historical snapshot
+    #
+
+    historical_path = (
+        get_historical_snapshot_path(
+            symbol
+        )
+    )
+
+    df.to_parquet(
+        historical_path,
+        index=False
+    )
+
+    return latest_path
 
 
 def load_snapshot(symbol):
@@ -148,6 +167,22 @@ def load_snapshot(symbol):
         )
 
     return pd.read_parquet(path)
+
+
+def get_snapshot_expirations(symbol):
+
+    df = load_snapshot(
+        symbol
+    )
+
+    expirations = sorted(
+        df["expiration"]
+        .dropna()
+        .unique()
+        .tolist()
+    )
+
+    return expirations
 
 
 def snapshot_exists(symbol):
@@ -217,4 +252,5 @@ def cleanup_old_snapshots(
                 )
 
             except Exception:
+
                 pass
