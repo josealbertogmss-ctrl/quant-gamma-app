@@ -1,5 +1,4 @@
 import streamlit as st
-import pandas as pd
 
 from engine.data import (
     get_expirations
@@ -13,13 +12,12 @@ from charts.plotly_charts import (
     create_gex_chart
 )
 
-st.title(
-    "Gamma Dashboard"
+st.set_page_config(
+    page_title="Quant Gamma",
+    layout="wide"
 )
 
-#
-# TICKER
-#
+st.title("Quant Gamma Dashboard")
 
 ticker = st.text_input(
     "Ticker",
@@ -42,50 +40,50 @@ if st.button("Cargar expiraciones"):
             "expirations"
         ] = expirations
 
-        st.success(
-            f"{len(expirations)} expiraciones encontradas"
-        )
-
     except Exception as e:
 
         st.error(
-            str(e)
+            f"Error cargando expiraciones: {e}"
         )
 
 #
 # SELECTOR DE EXPIRACIÓN
 #
 
+selected_expiration = None
+
 if "expirations" in st.session_state:
 
     selected_expiration = st.selectbox(
-        "Expiración",
-        st.session_state[
-            "expirations"
-        ]
+        "Selecciona expiración",
+        st.session_state["expirations"]
     )
 
-    #
-    # ANALIZAR
-    #
+#
+# ANALIZAR
+#
 
-    if st.button("Analizar"):
+if (
+    selected_expiration
+    and
+    st.button("Analizar")
+):
 
-        with st.spinner(
-            "Calculando..."
-        ):
+    with st.spinner(
+        "Calculando Gamma..."
+    ):
 
-            results = run_analysis(
-                ticker,
-                selected_expiration
-            )
+        results = run_analysis(
+            ticker,
+            selected_expiration
+        )
 
-            st.session_state[
-                "results"
-            ] = results
+    st.session_state[
+        "results"
+    ] = results
 
 #
-# RESULTADOS
+# MOSTRAR RESULTADOS
 #
 
 if "results" in st.session_state:
@@ -94,7 +92,7 @@ if "results" in st.session_state:
         "results"
     ]
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4, col5 = st.columns(5)
 
     col1.metric(
         "Spot",
@@ -114,21 +112,12 @@ if "results" in st.session_state:
         results["put_wall"]
     )
 
-    col1, col2, col3 = st.columns(3)
-
-    col1.metric(
+    col4.metric(
         "Gamma Flip",
-        (
-            round(
-                results["gamma_flip"],
-                2
-            )
-            if results["gamma_flip"]
-            else "N/A"
-        )
+        results["gamma_flip"]
     )
 
-    col2.metric(
+    col5.metric(
         "Expected Move",
         round(
             results["expected_move"],
@@ -136,52 +125,9 @@ if "results" in st.session_state:
         )
     )
 
-    col3.metric(
-        "IV ATM",
-        round(
-            results["selected_iv_atm"]
-            * 100,
-            2
-        )
-    )
-
     st.plotly_chart(
         create_gex_chart(
-            results["net_gex_by_strike"],
-            results["spot"],
-            results["call_wall"],
-            results["put_wall"],
-            results["gamma_flip"],
-            results["lower_expected"],
-            results["upper_expected"]
-        ),
-        width="stretch"
-    )
-
-    st.subheader(
-        "Top Call Walls"
-    )
-
-    st.dataframe(
-        pd.DataFrame(
-            {
-                "Strike":
-                results["call_walls"]
-            }
-        ),
-        width="stretch"
-    )
-
-    st.subheader(
-        "Top Put Walls"
-    )
-
-    st.dataframe(
-        pd.DataFrame(
-            {
-                "Strike":
-                results["put_walls"]
-            }
+            results["net_gex_by_strike"]
         ),
         width="stretch"
     )
@@ -189,6 +135,4 @@ if "results" in st.session_state:
     with st.expander(
         "Debug"
     ):
-        st.write(
-            results
-        )
+        st.write(results)
