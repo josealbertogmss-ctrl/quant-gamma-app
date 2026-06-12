@@ -119,33 +119,35 @@ def run_analysis(symbol, max_dte):
 
     sample_iv = calls_df.iloc[0]["impliedVolatility"]
 
+    sample_dte = calls_df.iloc[0]["dte"]
+
     gamma = calc_gamma_vectorized(
         spot,
         sample_strike,
         sample_iv,
-        30 / 365
+        sample_dte / 365
     )
 
     # ============================================================
-    # GAMMA CALLS
+    # GAMMA CALLS (DTE REAL)
     # ============================================================
 
     calls_df["gamma"] = calc_gamma_vectorized(
         spot,
         calls_df["strike"],
         calls_df["impliedVolatility"],
-        30 / 365
+        calls_df["dte"] / 365
     )
 
     # ============================================================
-    # GAMMA PUTS
+    # GAMMA PUTS (DTE REAL)
     # ============================================================
 
     puts_df["gamma"] = calc_gamma_vectorized(
         spot,
         puts_df["strike"],
         puts_df["impliedVolatility"],
-        30 / 365
+        puts_df["dte"] / 365
     )
 
     # ============================================================
